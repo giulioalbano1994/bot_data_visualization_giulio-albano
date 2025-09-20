@@ -1,0 +1,29 @@
+# Core dependencies
+python-telegram-bot
+python-dotenv
+
+# Data processing
+pandas
+numpy
+openpyxl 
+# Per leggere file Excel
+
+# LLM Integration
+openai
+
+# Visualization
+matplotlib
+seaborn
+plotly
+pillow
+
+# Database (per il futuro)
+sqlalchemy
+psycopg2-binary
+# oppure
+# pymongo==4.6.0  # Per MongoDB
+
+# API e utilities
+aiohttp
+pydantic
+redis
