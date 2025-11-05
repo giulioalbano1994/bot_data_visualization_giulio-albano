@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import json
 import logging
@@ -69,7 +69,7 @@ class QueryParameters:
 # -----------------------------
 class LLMProcessor:
     """
-    Modulare: build_prompt → call_llm → parse_response → normalize/fallback.
+    Modulare: build_prompt â†’ call_llm â†’ parse_response â†’ normalize/fallback.
     Mantiene i metodi pubblici usati da main.py:
     - available_variables(limit)
     - process_request(text) -> QueryParameters
@@ -80,7 +80,7 @@ class LLMProcessor:
         self.client = OpenAI(api_key=api_key)
         self.model = model
 
-        # Catalogo variabili (best-effort da più candidati)
+        # Catalogo variabili (best-effort da piÃ¹ candidati)
         self.variable_catalog = self._load_variable_catalog()
         self.metric_mapping = self._build_metric_mapping(self.variable_catalog)
         self.catalog_text = self._catalog_preview(self.variable_catalog)
@@ -117,6 +117,8 @@ class LLMProcessor:
                 params.normalize_as_percent = as_percent
             # Metriche normalizzate verso nomi canonici
             params.metrics = self._normalize_metrics(params.metrics or [])
+            # Regole aggiuntive per richieste su "redditi"
+            self._apply_income_defaults(user_request, params)
             return params
         except Exception as e:
             logger.error(f"LLM error in process_request: {e}")
@@ -124,7 +126,7 @@ class LLMProcessor:
 
     def generate_commentary(self, df: pd.DataFrame, params: "QueryParameters") -> str:
         """
-        Commento sintetico (3–6 bullet) sui dati passati.
+        Commento sintetico (3â€“6 bullet) sui dati passati.
         """
         try:
             df_safe = df.copy()
@@ -150,8 +152,8 @@ class LLMProcessor:
                 period = ""
 
             system = (
-                "Sei un assistente di data analysis. Ricevi un CSV di preview (già aggregato). "
-                "Rispondi con 3–6 punti elenco (ognuno inizia con '- ') in italiano: livelli, differenze comuni, trend, 1–2 insight. "
+                "Sei un assistente di data analysis. Ricevi un CSV di preview (giÃ  aggregato). "
+                "Rispondi con 3â€“6 punti elenco (ognuno inizia con '- ') in italiano: livelli, differenze comuni, trend, 1â€“2 insight. "
                 "Niente premesse, niente codice, niente markdown extra."
             )
             user = (
@@ -175,26 +177,22 @@ class LLMProcessor:
     # ---------- Internals: Prompting ----------
 
     def _build_prompt(self, user_request: str) -> (str, str):
-        variables_list = (
-            "istat_comune\tanno\tcomune\tsigla_provincia\tregione_mef\t"
-            "numero_contribuenti\treddito_da_lavoro_dipendente_frequenza\t"
-            "reddito_da_lavoro_dipendente_ammontare_in_euro\treddito_da_pensione_frequenza\t"
-            "reddito_da_pensione_ammontare_in_euro\treddito_da_lavoro_autonomo_comprensivo_dei_valori_nulli_frequenza\t"
-            "reddito_da_lavoro_autonomo_comprensivo_dei_valori_nulli_ammontare_in_euro\t"
-            "reddito_imponibile_ammontare_in_euro\timposta_netta_ammontare_in_euro\t"
-            "addizionale_regionale_dovuta_ammontare_in_euro\taddizionale_comunale_dovuta_ammontare_in_euro\t"
-            "pop_totale\tsaldo_migratorio_estero_com\tsaldo_migratorio_tot_com\t"
-            "laureati_res_femmine\tlaureati_res_maschi\tlaureati_res_tot\tgini_index"
-        )
+        variables: List[str] = []
+        for _, r in self.variable_catalog.iterrows():
+            v = str(r.get("variabile", "")).strip()
+            lvl = str(r.get("livello", "")).lower()
+            if v and not any(x in lvl for x in ["identificativo", "tecnico", "da escludere"]):
+                variables.append(v)
+        variables_list = "\t".join(sorted(set(variables))[:120])
 
         system = f"""
 Sei un planner che converte richieste in linguaggio naturale in un JSON **valido** per una query dati.
 Regole:
 - Usa SOLO i nomi di colonne disponibili nel dataset.
-- Imposta 'query_type' e 'chart_type' (preferenza: serie storiche → chart=line).
+- Imposta 'query_type' e 'chart_type' (preferenza: serie storiche â†’ chart=line).
 - 'metrics' deve contenere nomi canonici (es: pop_totale, average_income, total_income, gini_index).
 - Consenti 'derived_metrics' con campi: name, formula OPPURE (type in ['per_capita','share_of'] con metric/base o num/den).
-- Se non è specificato il periodo e NON è una time series, l'anno sarà deciso a valle (ultimo disponibile).
+- Se non Ã¨ specificato il periodo e NON Ã¨ una time series, l'anno sarÃ  deciso a valle (ultimo disponibile).
 - Rispondi **solo** con JSON (senza testo extra).
 
 Variabili disponibili:
@@ -336,6 +334,12 @@ Sinonimi utili:
         text = (user_request or "").lower()
         if "distribuz" in text:
             qt, ch = QueryType.DISTRIBUTION, ChartType.BAR
+        # Regola: 'redditi' generico -> time series dei redditi medi
+        elif ("redditi" in text) and not any(q in text for q in [
+            "totale", "imponibil", "pension", "dipendent", "autonom", "fabbricat",
+            "imprenditor", "partecip", "addizional", "irpef", "complessiv",
+        ]):
+            qt, ch = QueryType.TIME_SERIES, ChartType.LINE
         elif any(k in text for k in ["confronta", "paragona", "compara", "comparare"]):
             qt, ch = QueryType.COMPARE_COMUNI, ChartType.BAR
         elif any(k in text for k in ["andamento", "anni", "serie", "trend", "nel tempo", "evoluzione", "storico", "tempo"]):
@@ -351,8 +355,11 @@ Sinonimi utili:
             metrics = ["average_income"]
         elif "gini" in text:
             metrics = ["gini_index"]
+        # Regola: redditi generici -> average_income
+        elif "redditi" in text:
+            metrics = ["average_income"]
         else:
-            metrics = ["total_income"]
+            metrics = ["average_income"]
 
         norm_pop, as_percent = self._detect_population_normalization(text)
         return QueryParameters(
@@ -374,39 +381,91 @@ Sinonimi utili:
             return True, False
         return None, None
 
-    # ---------- Internals: Catalog & Mappings ----------
+    def _apply_income_defaults(self, user_text: str, params: "QueryParameters") -> None:
+        """Applica le regole richieste per 'redditi'.
 
-    def _load_variable_catalog(self) -> pd.DataFrame:
-        cands = [
-            os.getenv("VARIABLES_DICT", "").strip(),
-            r"G:\\Il mio Drive\\Bot\\dizionario_variabili.csv",
-            os.path.join(os.getcwd(), "dizionario_variabili.csv"),
-            os.path.join(os.getcwd(), "resources", "dizionario_variabili.csv"),
+        - Se vengono chiesti redditi in modo generico ("redditi" senza qualificatori),
+          forza time_series + line e metrica average_income.
+        - Se non vengono specificati quali redditi (metrics vuoto), imposta average_income.
+        """
+        t = (user_text or "").lower()
+        # Qualificatori che rendono 'redditi' non generico
+        qualifiers = [
+            "totale", "imponibil", "pension", "dipendent", "autonom", "fabbricat",
+            "imprenditor", "partecip", "addizional", "irpef", "complessiv",
         ]
-        df = pd.DataFrame()
+        is_generic_redditi = ("redditi" in t) and not any(q in t for q in qualifiers)
+
+        if is_generic_redditi:
+            params.query_type = QueryType.TIME_SERIES
+            params.chart_type = ChartType.LINE
+            params.metrics = ["average_income"]
+            return
+
+        # Se non specificate metriche, default a average_income
+        if not (params.metrics and len(params.metrics) > 0):
+            params.metrics = ["average_income"]
+
+# ---------- Internals: Catalog & Mappings ----------
+    def _load_variable_catalog(self) -> pd.DataFrame:
+        """Carica il catalogo variabili. Se non trova dizionario_variabili.csv,
+        legge direttamente le colonne dal dataset principale (resources/df_ridotto_bot.csv o .xlsx)."""
+        import os
+        import pandas as pd
+
+        cands = [
+        os.getenv("VARIABLES_DICT", "").strip(),
+        os.path.join(os.getcwd(), "resources", "dizionario_variabili.csv"),
+        os.path.join(os.getcwd(), "dizionario_variabili.csv"),
+        ]
+
         for p in cands:
             if p and os.path.exists(p):
                 try:
                     df = pd.read_csv(p)
                 except Exception:
-                    df = pd.read_csv(p, sep=";")
-                break
-        if df.empty:
-            df = pd.DataFrame(
-                [
-                    {
-                        "variabile": "pop_totale",
-                        "descrizione": "Popolazione residente",
-                        "sinonimi/termini collegati": "popolazione, abitanti, residenti",
-                        "livello": "comunale",
-                    }
-                ]
-            )
-        df.columns = [c.strip().lower() for c in df.columns]
-        for c in df.columns:
-            if df[c].dtype == "object":
-                df[c] = df[c].astype(str).str.strip()
+                    df = pd.read_csv(p, sep=';')
+            df.columns = [c.strip().lower() for c in df.columns]
+            for c in df.columns:
+                if df[c].dtype == "object":
+                    df[c] = df[c].astype(str).str.strip()
+            print(f"âœ… Catalogo variabili caricato da file: {p}")
+            return df
+
+        # Fallback: genera il catalogo direttamente dal dataset principale
+        dataset_candidates = [
+        os.path.join("resources", "df_ridotto_bot.csv"),
+        os.path.join("resources", "df_ridotto_bot.xlsx"),
+        ]
+
+        for d in dataset_candidates:
+            if os.path.exists(d):
+                try:
+                    if d.endswith(".csv"):
+                        cols = pd.read_csv(d, nrows=1).columns.tolist()
+                    else:
+                        cols = pd.read_excel(d, nrows=1).columns.tolist()
+                    df = pd.DataFrame({
+                        "variabile": cols,
+                        "descrizione": ["" for _ in cols],
+                        "sinonimi/termini collegati": ["" for _ in cols],
+                        "livello": ["comunale" for _ in cols],
+                    })
+                    print(f"âœ… Catalogo variabili generato dal dataset principale ({len(cols)} colonne)")
+                    return df
+                except Exception as e:
+                    print(f"âŒ Errore durante la lettura del dataset per il catalogo: {e}")
+
+        # Fallback minimo (ultima spiaggia)
+        df = pd.DataFrame([{
+        "variabile": "pop_totale",
+        "descrizione": "Popolazione residente",
+        "sinonimi/termini collegati": "popolazione, abitanti, residenti",
+        "livello": "comunale",
+     }])
+        print("âš ï¸ Nessun dizionario trovato, uso fallback minimo (solo pop_totale).")
         return df
+
 
     def _build_metric_mapping(self, catalog: pd.DataFrame) -> Dict[str, str]:
         mapping: Dict[str, str] = {}
@@ -434,10 +493,21 @@ Sinonimi utili:
                 "residenti": "pop_totale",
                 "gini": "gini_index",
                 "reddito totale": "total_income",
-                "redditi": "total_income",
+                "redditi": "average_income",
+                "redditi medi": "average_income",
                 "pensioni": "reddito_da_pensione_ammontare_in_euro",
                 "pensionati": "reddito_da_pensione_frequenza",
                 "dipendenti": "reddito_da_lavoro_dipendente_ammontare_in_euro",
+                "imprese registrate": "imprese_registrate_prov",
+                "imprese attive": "imprese_attive_prov",
+                "iscrizioni imprese": "imprese_iscrizioni_prov",
+                "cessazioni imprese": "imprese_cessazioni_prov",
+                "saldo imprese": "imprese_saldo_prov",
+                "brevetti": "brevetti_num_prov",
+                "percentuale brevetti": "brevetti_pct_prov",
+                "merci scaricate": "merci_scaricate_tonnellate",
+                "anno di imposta": "anno_di_imposta",
+                "capoluogo": "capoluogo_flag",
             }
         )
         return mapping

@@ -56,6 +56,16 @@ class Classifier:
         if any(i in text_norm for i in self.info_triggers):
             return {"category":"info_request","reason":"info_trigger"}
 
+        # 2.5) quick data intent heuristic (reduces LLM misclassification)
+        data_keywords = [
+            "redditi", "reddito", "popolazione", "abitanti", "gini", "laureati",
+            "imprese", "pensione", "pensionati", "andamento", "serie", "trend",
+            "confronta", "confronto", "compara", "classifica", "top", "distribuz",
+            "provincia", "regione", "comune", "comuni"
+        ]
+        if any(k in text_norm for k in data_keywords):
+            return {"category":"data_request","reason":"keyword_detected"}
+
         # 3) nonsense heuristic: only symbols or random letters w/out vowels
         if re.fullmatch(r"[^\w\s]+", text_norm) or (re.fullmatch(r"[a-z]{10,}", text_norm) and not any(v in text_norm for v in "aeiou")):
             return {"category":"nonsense","reason":"noise_pattern"}

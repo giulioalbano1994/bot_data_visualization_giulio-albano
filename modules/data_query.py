@@ -1,8 +1,8 @@
 import os
 import logging
 from typing import Tuple, List, Dict, Any, Optional
-
 import pandas as pd
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -23,25 +23,40 @@ class DataFrameManager:
     # ---------- Public ----------
 
     def load_data(self):
+        """
+        Carica il dataset principale (preferendo il CSV) e misura il tempo di caricamento.
+        """
         candidates = [
-            os.path.join(self.data_dir, "df_ridotto_bot.csv"),
+            os.path.join(self.data_dir, "df_ridotto_bot.csv"),    # ✅ preferisci CSV
             os.path.join(self.data_dir, "df_ridotto_bot.xlsx"),
             os.path.join("resources", "df_ridotto_bot.csv"),
             os.path.join("resources", "df_ridotto_bot.xlsx"),
         ]
+
         last_err = None
         for p in candidates:
             if os.path.exists(p):
                 try:
-                    df = pd.read_excel(p) if p.lower().endswith(".xlsx") else pd.read_csv(p)
+                    start = time.time()
+                    if p.lower().endswith(".xlsx"):
+                        df = pd.read_excel(p, engine="openpyxl")
+                    else:
+                        df = pd.read_csv(p)
+                    elapsed = round(time.time() - start, 2)
+
                     self.df = self._normalize_df(df)
-                    logger.info(f"Dati caricati da: {p} | righe={len(self.df)} col={len(self.df.columns)}")
+                    logger.info(
+                        f"✅ Dati caricati da: {p} | righe={len(self.df)} | colonne={len(self.df.columns)} | tempo={elapsed}s"
+                    )
+                    print(f"📊 Dataset caricato da: {p}\n   → {len(self.df):,} righe, {len(self.df.columns)} colonne (in {elapsed}s)")
                     return
                 except Exception as e:
                     last_err = e
+                    logger.error(f"❌ Errore caricamento {p}: {e}")
+
         if last_err:
             raise last_err
-        raise FileNotFoundError("Nessun dataset trovato (CSV/XLSX) tra i percorsi attesi.")
+        raise FileNotFoundError("❌ Nessun dataset trovato (né CSV né XLSX) nei percorsi attesi.")
 
     def query_data(self, params) -> Tuple[pd.DataFrame, str, str]:
         """
