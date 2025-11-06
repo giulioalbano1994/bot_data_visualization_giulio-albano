@@ -2,6 +2,7 @@ import os
 import logging
 from typing import Tuple, List, Dict, Any, Optional
 import pandas as pd
+import numpy as np
 import time
 
 logger = logging.getLogger(__name__)
@@ -9,11 +10,11 @@ logger = logging.getLogger(__name__)
 
 class DataFrameManager:
     """
-    API invariata:
+    API evoluta:
     - load_data()
-    - query_data(params) -> (df, xlabel, ylabel)
-
-    Internamente è modulare: filtri, derived, distribuzione, aggregazione, normalizzazione.
+    - query_data(params) -> (df, xlabel, ylabel, meta)
+    - query_data_for_map(params) -> (df_agg, xlabel, ylabel, meta)
+    - dataset_meta() -> dict
     """
 
     def __init__(self, data_dir: str):
@@ -41,7 +42,7 @@ class DataFrameManager:
                     if p.lower().endswith(".xlsx"):
                         df = pd.read_excel(p, engine="openpyxl")
                     else:
-                        df = pd.read_csv(p)
+                        df = pd.read_csv(p, low_memory=False)
                     elapsed = round(time.time() - start, 2)
 
                     self.df = self._normalize_df(df)
@@ -58,17 +59,31 @@ class DataFrameManager:
             raise last_err
         raise FileNotFoundError("❌ Nessun dataset trovato (né CSV né XLSX) nei percorsi attesi.")
 
-    def query_data(self, params) -> Tuple[pd.DataFrame, str, str]:
+    def dataset_meta(self) -> Dict[str, Any]:
+        if self.df is None:
+            return {}
+        latest_year = None
+        if "anno" in self.df.columns and self.df["anno"].notna().any():
+            latest_year = int(pd.to_numeric(self.df["anno"], errors="coerce").dropna().max())
+        sources = self._infer_sources(self.df.columns.tolist())
+        coverage = f"{len(self.df):,}x{len(self.df.columns)}"
+        return {
+            "latest_year": latest_year,
+            "sources": sources,
+            "coverage_str": coverage
+        }
+
+    def query_data(self, params) -> Tuple[pd.DataFrame, str, str, Dict[str, Any]]:
         """
         Flusso:
           1) copia df
           2) alias & basi
           3) filtri (comuni, periodo con default)
-          4) derived metrics (formula/per_capita/share_of)
+          4) derived metrics (formula/per_capita/share_of + YoY/CAGR)
           5) casi speciali (distribution)
           6) verifica metriche richieste
           7) aggregazione + normalizzazione
-          8) label assi
+          8) label assi + meta (fonti/anno/coverage)
         """
         if self.df is None:
             raise RuntimeError("Dati non caricati: chiama load_data() prima di query_data().")
@@ -84,24 +99,50 @@ class DataFrameManager:
 
         # 3) derived
         df = self._add_derived_metrics(df, params)
+        df = self._add_analytics(df, params)  # YoY, CAGR, rank, ecc.
 
         # 4) caso speciale: distribuzione per classi di reddito
         qtype_tmp = self._query_type_value(params)
         if qtype_tmp == "distribution":
-            return self._handle_distribution(df, params)
+            out, x, y = self._handle_distribution(df, params)
+            meta = self._meta(df, params)
+            return out, x, y, meta
 
         # 5) metriche richieste
         requested, available = self._requested_vs_available(df, params)
         if not available:
             logger.warning(f"Metriche richieste non trovate: {requested}")
-            return pd.DataFrame(), "Comune o Anno", ""
+            return pd.DataFrame(), "Comune o Anno", "", self._meta(df, params)
 
         # 6) aggregazione & normalizzazione
         df_out, group = self._aggregate(df, params, available)
 
         xlabel = group.capitalize() if group else "Comune o Anno"
-        ylabel = " / ".join([c for c in df_out.columns if c not in ([group] if group else [])])
-        return df_out, xlabel, ylabel
+        ylabel = self._friendly_ylabel(df_out, group)
+        return df_out, xlabel, ylabel, self._meta(df, params)
+
+    def query_data_for_map(self, params) -> Tuple[pd.DataFrame, str, str, Dict[str, Any]]:
+        """Restituisce df aggregato a livello regionale (se possibile) o comunale per mappa."""
+        if self.df is None:
+            raise RuntimeError("Dati non caricati.")
+        df = self.df.copy()
+        self._add_aliases(df)
+        df = self._filter_period(df, params)
+
+        metric = (params.metrics or ["average_income"])[0]
+        # Try region-level
+        if "regione_norm" in df.columns:
+            df_map = df.groupby("regione_norm", dropna=False)[[metric]].sum(numeric_only=True).reset_index()
+            meta = self._meta(df, params)
+            meta["map_level"] = "regione"
+            return df_map, "Regione", metric, meta
+        # Fallback comune
+        if "comune" in df.columns:
+            df_map = df.groupby("comune", dropna=False)[[metric]].sum(numeric_only=True).reset_index()
+            meta = self._meta(df, params)
+            meta["map_level"] = "comune"
+            return df_map, "Comune", metric, meta
+        return pd.DataFrame(), "", "", self._meta(df, params)
 
     # ---------- Helpers: Base ----------
 
@@ -110,6 +151,9 @@ class DataFrameManager:
         df.columns = [str(c).strip().lower() for c in df.columns]
         if "anno" in df.columns:
             df["anno"] = pd.to_numeric(df["anno"], errors="coerce").astype("Int64")
+        # Coerenza popolazione totale
+        if "pop_totale" not in df.columns and "popolazione" in df.columns:
+            df["pop_totale"] = pd.to_numeric(df["popolazione"], errors="coerce")
         return df
 
     def _add_aliases(self, df: pd.DataFrame) -> None:
@@ -134,12 +178,6 @@ class DataFrameManager:
     def _filter_period(self, df: pd.DataFrame, params) -> pd.DataFrame:
         """
         Gestisce il filtro per anno o intervallo.
-
-        - Se viene specificato un anno, filtra solo quell'anno.
-        - Se viene specificato un intervallo, filtra il range.
-        - Se query_type = time_series e non c'è un periodo esplicito,
-          restituisce tutti gli anni disponibili.
-        - Altrimenti (non time_series) usa come default l'ultimo anno disponibile.
         """
         if "anno" not in df.columns:
             return df
@@ -150,7 +188,7 @@ class DataFrameManager:
         if getattr(params, "start_year", None) is not None and getattr(params, "end_year", None) is not None:
             return df[(df["anno"] >= params.start_year) & (df["anno"] <= params.end_year)]
 
-        qtype_tmp = params.query_type.value if hasattr(params.query_type, "value") else str(params.query_type)
+        qtype_tmp = self._query_type_value(params)
         if qtype_tmp == "time_series":
             return df
 
@@ -217,6 +255,46 @@ class DataFrameManager:
             df[name] = pd.to_numeric(df[num], errors="coerce") / pd.to_numeric(df[den], errors="coerce")
         return df
 
+    # ---------- Analytics (YoY, CAGR, rank) ----------
+
+    def _add_analytics(self, df: pd.DataFrame, params) -> pd.DataFrame:
+        """Regole semplici per generare analisi derivate quando richieste via metrics (yoy_*, cagr_*)."""
+        metrics = list(params.metrics or [])
+        if not metrics:
+            return df
+
+        def _safe_sort(d: pd.DataFrame) -> pd.DataFrame:
+            if "anno" in d.columns:
+                try:
+                    return d.sort_values("anno")
+                except Exception:
+                    return d
+            return d
+
+        dfx = df.copy()
+        if "anno" not in dfx.columns:
+            return dfx
+
+        for m in list(metrics):
+            if m.startswith("yoy_"):
+                base = m[4:]
+                if base in dfx.columns:
+                    dfx[m] = _safe_sort(dfx).groupby("comune", dropna=False)[base].pct_change() * 100.0
+            if m.startswith("cagr_"):
+                base = m[5:]
+                if base in dfx.columns:
+                    # CAGR calcolato per comune sull'intero intervallo disponibile (approx)
+                    dfx = dfx.sort_values(["comune","anno"])
+                    def _cagr(g):
+                        n = g["anno"].dropna().nunique()
+                        if n <= 1: return np.nan
+                        v0 = pd.to_numeric(g[base], errors="coerce").iloc[0]
+                        v1 = pd.to_numeric(g[base], errors="coerce").iloc[-1]
+                        if v0 in (0, None, np.nan): return np.nan
+                        return ( (v1 / v0) ** (1/(n-1)) - 1 ) * 100.0
+                    dfx[m] = dfx.groupby("comune", dropna=False).apply(_cagr).reset_index(level=0, drop=True)
+        return dfx
+
     # ---------- Helpers: Distribuzione redditi ----------
 
     def _handle_distribution(self, df: pd.DataFrame, params) -> Tuple[pd.DataFrame, str, str]:
@@ -254,7 +332,8 @@ class DataFrameManager:
                 return pd.DataFrame(), "Classe reddito", "Ammontare (euro)"
             values = [float(pd.to_numeric(dfc[c], errors="coerce").sum()) for c in available_cols]
             classes = [label_map.get(c, c) for c in available_cols]
-            out = pd.DataFrame({"classe": classes, "valore": values})
+            out = pd.DataFrame({"anno": dfc["anno"].max() if "anno" in dfc.columns else None,
+                                "classe": classes, "valore": values})
             return out, "Classe reddito", "Ammontare (euro)"
 
         if "comune" not in df.columns:
@@ -362,6 +441,30 @@ class DataFrameManager:
 
         return df_g[[group] + available], group
 
+    # ---------- Meta ----------
+    def _meta(self, df: pd.DataFrame, params) -> Dict[str, Any]:
+        sources = self._infer_sources(df.columns.tolist())
+        latest_year = None
+        if "anno" in df.columns and df["anno"].notna().any():
+            latest_year = int(pd.to_numeric(df["anno"], errors="coerce").dropna().max())
+        return {
+            "sources": sources,
+            "latest_year": latest_year,
+            "coverage_str": f"{len(df):,}x{len(df.columns)}"
+        }
+
+    def _infer_sources(self, cols: List[str]) -> List[str]:
+        out = set()
+        for c in cols:
+            cl = c.lower()
+            if "reddito" in cl or "imposta" in cl or "irpef" in cl:
+                out.add("MEF")
+            if "pop" in cl or "laureati" in cl or "saldo_migratorio" in cl:
+                out.add("ISTAT")
+            if "impres" in cl or "brevetti" in cl:
+                out.add("Infocamere/Brevetti")
+        return sorted(out)
+
     # ---------- Extras ----------
 
     def sources_for_metrics(self, metric_list: List[str]) -> List[str]:
@@ -371,3 +474,14 @@ class DataFrameManager:
         if self.df is None or "comune" not in self.df.columns:
             return []
         return sorted({str(c).strip() for c in self.df["comune"].dropna().unique()})
+
+    # Friendly ylabel builder
+    def _friendly_ylabel(self, df_out: pd.DataFrame, group: Optional[str]) -> str:
+        # Heuristica minimale: percentuali e per-capita
+        cols = [c for c in df_out.columns if c != (group or "")]
+        label = " / ".join(cols)
+        if any(str(c).endswith("_pct_pop") for c in cols):
+            return "% popolazione"
+        if any("income" in str(c) or "euro" in str(c) for c in cols):
+            return "Valore (€)"
+        return label

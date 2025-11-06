@@ -107,6 +107,10 @@ class LLMProcessor:
         Restituisce sempre un QueryParameters valido.
         """
         try:
+            # Fallback locale se manca la chiave OpenAI
+            if not os.getenv("OPENAI_API_KEY"):
+                logger.warning("No OpenAI key, using local fallback")
+                return self._fallback_parameters(user_request)
             system, user = self._build_prompt(user_request)
             raw = self._call_llm(system, user)
             params = self._parse_llm_response(raw)
@@ -119,6 +123,8 @@ class LLMProcessor:
             params.metrics = self._normalize_metrics(params.metrics or [])
             # Regole aggiuntive per richieste su "redditi"
             self._apply_income_defaults(user_request, params)
+            # Regole per richieste su popolazione/abitanti
+            self._apply_population_defaults(user_request, params)
             return params
         except Exception as e:
             logger.error(f"LLM error in process_request: {e}")
@@ -405,6 +411,21 @@ Sinonimi utili:
         # Se non specificate metriche, default a average_income
         if not (params.metrics and len(params.metrics) > 0):
             params.metrics = ["average_income"]
+
+        # Doctest-style example (informal):
+        # >>> lp = LLMProcessor(api_key="test")  # doctest: +SKIP
+        # >>> p = lp._fallback_parameters("Redditi Torino nel tempo")  # doctest: +SKIP
+        # >>> lp._apply_income_defaults("Redditi Torino nel tempo", p)  # doctest: +SKIP
+        # >>> p.query_type, p.chart_type, p.metrics  # doctest: +SKIP
+        # (<QueryType.TIME_SERIES: 'time_series'>, <ChartType.LINE: 'line'>, ['average_income'])
+
+    def _apply_population_defaults(self, text: str, params: "QueryParameters") -> "QueryParameters":
+        t = (text or "").lower()
+        if ("popolazione" in t) or ("abitanti" in t):
+            params.metrics = ["pop_totale"]
+            params.chart_type = ChartType.LINE
+            params.query_type = QueryType.TIME_SERIES
+        return params
 
 # ---------- Internals: Catalog & Mappings ----------
     def _load_variable_catalog(self) -> pd.DataFrame:

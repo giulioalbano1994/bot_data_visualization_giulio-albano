@@ -5,6 +5,7 @@ from .llm_processor import (
     QueryParameters,
 )
 from .chart_generator import ChartGenerator
+from .map_generator import MapGenerator
 
 __all__ = [
     "LLMProcessor",
@@ -12,5 +13,5 @@ __all__ = [
     "ChartType",
     "QueryParameters",
     "ChartGenerator",
+    "MapGenerator",
 ]
-

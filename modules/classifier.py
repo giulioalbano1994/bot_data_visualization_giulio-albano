@@ -59,16 +59,20 @@ class Classifier:
         # 2.5) quick data intent heuristic (reduces LLM misclassification)
         data_keywords = [
             "redditi", "reddito", "popolazione", "abitanti", "gini", "laureati",
-            "imprese", "pensione", "pensionati", "andamento", "serie", "trend",
+            "imprese", "pensione", "pensionati", "andamento", "serie", "trend", "tempo",
             "confronta", "confronto", "compara", "classifica", "top", "distribuz",
             "provincia", "regione", "comune", "comuni"
         ]
         if any(k in text_norm for k in data_keywords):
-            return {"category":"data_request","reason":"keyword_detected"}
+            out = {"category":"data_request","reason":"keyword_detected"}
+            logger.debug(f"classifier: {out}")
+            return out
 
         # 3) nonsense heuristic: only symbols or random letters w/out vowels
         if re.fullmatch(r"[^\w\s]+", text_norm) or (re.fullmatch(r"[a-z]{10,}", text_norm) and not any(v in text_norm for v in "aeiou")):
-            return {"category":"nonsense","reason":"noise_pattern"}
+            out = {"category":"nonsense","reason":"noise_pattern"}
+            logger.debug(f"classifier: {out}")
+            return out
 
         # 4) LLM lightweight classification
         try:
@@ -94,8 +98,11 @@ class Classifier:
             if cat not in ["data_request","help_request","info_request","nonsense","offensive"]:
                 cat = "data_request"
             data["category"] = cat
+            logger.debug(f"classifier: {data}")
             return data
         except Exception as e:
             logger.warning(f"classifier fallback due to error: {e}")
             # default to data_request in doubt
-            return {"category":"data_request","reason":"fallback"}
+            out = {"category":"data_request","reason":"fallback"}
+            logger.debug(f"classifier: {out}")
+            return out

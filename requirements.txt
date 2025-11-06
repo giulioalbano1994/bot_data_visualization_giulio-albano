@@ -1,5 +1,5 @@
 # Core dependencies
-python-telegram-bot
+python-telegram-bot==20.6
 python-dotenv
 
 # Data processing
@@ -16,6 +16,9 @@ matplotlib
 seaborn
 plotly
 pillow
+reportlab
+geopandas
+tabulate
 
 # Database (per il futuro)
 sqlalchemy

@@ -134,3 +134,29 @@
 2025-10-17 10:12:52.292081,1074324540,giu,giu,gas,OUT,RESPONSE,"📊 **Come usare il bot**  Scrivimi una domanda sui dati socio-economici comunali.  ✨ **Esempi utili**: - 👥 Popolazione di *Milano* e *Roma* - 👩‍🦳 Pensionati a *Napoli* e *Milano* rispetto alla popolazione (2015-2023) - 💼 Reddito medio a *Torino* nel tempo - 📈 Gini index a *Bari* e *Palermo* - 🎓 Laureati residenti a *Firenze* e *Bologna* (ultimo anno disponibile)  ⚙️ **Comandi rapidi**: • /start → messaggio di benvenuto • /help → questa guida • /info → informazioni sul bot • /plot → genera un grafico a partire da una query   🔑 **Variabili disponibili (esempi)**: `anno`, `anno_di_imposta`, `pop_totale`, `iscritti_altrocom_com`, `iscritti_estero_com`, `iscritti_altri_com`, `cancellati_altrocom_com`, `cancellati_estero_com`, `cancellati_altri_com`, `saldo_migratorio_tot_com`, `saldo_migratorio_estero_com`, `laureati_tot`, `laureati_res_tot`, `laureati_res_femmine`, `laureati_res_maschi`, `numero_contribuenti`, `reddito_da_fabbricati_frequenza`, `reddito_da_fabbricati_ammontare_in_euro`, `reddito_da_lavoro_dipendente_frequenza`, `reddito_da_lavoro_dipendente_ammontare_in_euro`",HELP,,,1087,115
 2025-10-17 11:15:38.881224,1074324540,giu,giu,gas,OUT,RESPONSE,"Ciao giu ðŸ‘‹  Sono il bot per esplorare i dati socio-economici comunali ðŸ‡®ðŸ‡¹  Scrivimi una richiesta, ad esempio: â€¢ `Popolazione Bari e Napoli nel tempo` â€¢ `Reddito medio a Milano 2010-2020` â€¢ `Quota pensionati Roma e Firenze`  Per altri esempi digita /help ðŸ˜‰",START,,,273,43
 2025-10-17 11:15:58.638006,1074324540,giu,giu,gas,OUT,RESPONSE,"â„¹ï¸ **Informazioni sul Bot**  ðŸ‘¨â€ðŸ’» Autore: *Giulio Albano* (Univ. Bari, tirocinio Banca d'Italia) ðŸ“š Fonti: *ISTAT, MEF, MIUR, Infocamere, Eurostat*  ðŸ”Ž Il bot normalizza i dati, calcola metriche derivate (pro capite, percentuali, quote, crescite) e genera grafici leggibili. Perfetto per confronti tra comuni, serie storiche e analisi distributive.",INFO,,,363,48
+2025-11-05 23:40:31.453693;1074324540;giu;giu;gas;OUT;RESPONSE;Ciao giu \U0001F44B  Sono il bot per esplorare i dati socio-economici comunali \U0001F1EE\U0001F1F9  Scrivimi una richiesta, ad esempio: • `Popolazione Bari e Napoli nel tempo` • `Reddito medio a Milano 2010-2020` • `Quota pensionati Roma e Firenze`  Per altri esempi digita /help \U0001F609;START;;;291;43
+2025-11-05 23:40:37.534012;1074324540;giu;giu;gas;OUT;RESPONSE;Ciao giu \U0001F44B  Sono il bot per esplorare i dati socio-economici comunali \U0001F1EE\U0001F1F9  Scrivimi una richiesta, ad esempio: • `Popolazione Bari e Napoli nel tempo` • `Reddito medio a Milano 2010-2020` • `Quota pensionati Roma e Firenze`  Per altri esempi digita /help \U0001F609;START;;;291;43
+2025-11-05 23:40:40.305051;1074324540;giu;giu;gas;OUT;RESPONSE;\u2139\uFE0F **Informazioni sul Bot**  \U0001F468\u200D\U0001F4BB Autore: *Giulio Albano* (Univ. Bari, tirocinio Banca d'Italia) \U0001F4DA Fonti: *ISTAT, MEF, MIUR, Infocamere, Eurostat*  \U0001F50E Il bot normalizza i dati, calcola metriche derivate (pro capite, percentuali, quote, crescite) e genera grafici leggibili. Perfetto per confronti tra comuni, serie storiche e analisi distributive.  \U0001F4C5 Ultimo anno disponibile: *2023* \U0001F4C4 Coverage righe: *195,756x82* \U0001F4C1 Fonti attive nel dataset: *ISTAT, Infocamere/Brevetti, MEF*;INFO;;;551;65
+2025-11-06 00:00:17.003304;1074324540;giu;giu;gas;OUT;RESPONSE;"Ciao giu! 👋
+
+Sono il tuo bot sui dati socio‑economici 🇮🇹
+
+Esempi pronti:
+• Popolazione Bari e Napoli nel tempo
+• Reddito medio a Milano 2010–2020
+• Quota pensionati Roma e Firenze
+
+Scrivi la tua richiesta o usa /help.";START;;;217;39
+2025-11-06 00:01:02.972067;1074324540;giu;giu;gas;OUT;ERROR;Missing optional dependency 'tabulate'.  Use pip or conda to install tabulate.;;;;78;11
+2025-11-06 00:32:35.428537;1074324540;giu;giu;gas;OUT;RESPONSE;"Ciao giu! 👋
+
+Sono il tuo bot sui dati socio‑economici 🇮🇹
+
+Esempi pronti:
+• Popolazione Bari e Napoli nel tempo
+• Reddito medio a Milano 2010–2020
+• Quota pensionati Roma e Firenze
+
+Scrivi la tua richiesta o usa /help.";START;;;217;39
+2025-11-06 00:52:36.509279;1074324540;giu;giu;gas;OUT;RESPONSE;Ciao giu! 👋  Sono il tuo bot sui dati socio-economici 🇮🇹  Esempi pronti: • Popolazione Bari e Napoli nel tempo • Reddito medio a Milano 2010–2020 • Quota pensionati Roma e Firenze  Scrivi la tua richiesta o usa /help.;START;;;217;39
+2025-11-06 00:52:45.223287;1074324540;giu;giu;gas;OUT;RESPONSE;ℹ️ **Informazioni sul Bot**  👨‍💻 Autore: *Giulio Albano* (Univ. Bari, tirocinio Banca d'Italia) 📚 Fonti: *ISTAT, MEF, MIUR, Infocamere, Eurostat*  🔎 Il bot normalizza i dati, calcola metriche derivate (pro capite, percentuali, quote, crescite) e genera grafici leggibili. Perfetto per confronti tra comuni, serie storiche e analisi distributive.  📅 Ultimo anno disponibile: *2023* 📄 Coverage righe: *195,756x82* 📁 Fonti attive nel dataset: *ISTAT, Infocamere/Brevetti, MEF*;INFO;;;473;65

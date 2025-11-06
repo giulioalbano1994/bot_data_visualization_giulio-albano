@@ -3,9 +3,25 @@ import matplotlib.ticker as mticker
 import io
 import pandas as pd
 
+# Palette color-blind friendly
+PALETTE = None  # we'll rely on matplotlib default 'tab10' which is fine
+
 
 class ChartGenerator:
-    def generate_chart(self, df: pd.DataFrame, chart_type: str, title: str, xlabel: str, ylabel: str) -> bytes:
+    def __init__(self):
+        # Global style tweaks
+        plt.rcParams.update({
+            "figure.facecolor": "white",
+            "axes.facecolor": "white",
+            "axes.grid": True,
+            "grid.alpha": 0.25,
+            "axes.titlesize": 14,
+            "axes.labelsize": 12,
+            "legend.fontsize": 10,
+            "font.size": 11,
+        })
+
+    def generate_chart(self, df: pd.DataFrame, chart_type: str, title: str, xlabel: str, ylabel: str, subtitle: str = "") -> bytes:
         if df.empty:
             raise ValueError("DataFrame vuoto: impossibile generare il grafico.")
 
@@ -22,63 +38,15 @@ class ChartGenerator:
         if not y_cols:
             raise ValueError("Nessuna colonna Y disponibile per il grafico.")
 
-        # Rilevamento e ordinamento specifico per classi di reddito
-        income_amount_cols = [
-            'reddito_complessivo_da_0_a_10000_euro_ammontare_in_euro',
-            'reddito_complessivo_da_10000_a_15000_euro_ammontare_in_euro',
-            'reddito_complessivo_da_15000_a_26000_euro_ammontare_in_euro',
-            'reddito_complessivo_da_26000_a_55000_euro_ammontare_in_euro',
-            'reddito_complessivo_da_55000_a_75000_euro_ammontare_in_euro',
-            'reddito_complessivo_da_75000_a_120000_euro_ammontare_in_euro',
-            'reddito_complessivo_oltre_120000_euro_ammontare_in_euro',
-        ]
-        income_freq_cols = [
-            'reddito_complessivo_da_0_a_10000_euro_frequenza',
-            'reddito_complessivo_da_10000_a_15000_euro_frequenza',
-            'reddito_complessivo_da_15000_a_26000_euro_frequenza',
-            'reddito_complessivo_da_26000_a_55000_euro_frequenza',
-            'reddito_complessivo_da_55000_a_75000_euro_frequenza',
-            'reddito_complessivo_da_75000_a_120000_euro_frequenza',
-            'reddito_complessivo_oltre_120000_euro_frequenza',
-        ]
-        income_label_map = {
-            'reddito_complessivo_da_0_a_10000_euro_ammontare_in_euro': 'Da 0 a 10 mila',
-            'reddito_complessivo_da_10000_a_15000_euro_ammontare_in_euro': 'Da 10 mila a 15 mila',
-            'reddito_complessivo_da_15000_a_26000_euro_ammontare_in_euro': 'Da 15 mila a 26 mila',
-            'reddito_complessivo_da_26000_a_55000_euro_ammontare_in_euro': 'Da 26 mila a 55 mila',
-            'reddito_complessivo_da_55000_a_75000_euro_ammontare_in_euro': 'Da 55 mila a 75 mila',
-            'reddito_complessivo_da_75000_a_120000_euro_ammontare_in_euro': 'Da 75 mila a 120 mila',
-            'reddito_complessivo_oltre_120000_euro_ammontare_in_euro': 'Oltre 120 mila',
-            'reddito_complessivo_da_0_a_10000_euro_frequenza': 'Da 0 a 10 mila',
-            'reddito_complessivo_da_10000_a_15000_euro_frequenza': 'Da 10 mila a 15 mila',
-            'reddito_complessivo_da_15000_a_26000_euro_frequenza': 'Da 15 mila a 26 mila',
-            'reddito_complessivo_da_26000_a_55000_euro_frequenza': 'Da 26 mila a 55 mila',
-            'reddito_complessivo_da_55000_a_75000_euro_frequenza': 'Da 55 mila a 75 mila',
-            'reddito_complessivo_da_75000_a_120000_euro_frequenza': 'Da 75 mila a 120 mila',
-            'reddito_complessivo_oltre_120000_euro_frequenza': 'Oltre 120 mila',
-        }
-
-        # Se tutte (o alcune) le colonne Y appartengono alle classi di reddito, ordina secondo la sequenza desiderata
-        def _ordered_subset(order_list, items):
-            s = set(items)
-            return [c for c in order_list if c in s]
-
-        is_income_amount = any(c in income_amount_cols for c in y_cols)
-        is_income_freq = any(c in income_freq_cols for c in y_cols)
-        if is_income_amount:
-            y_cols = _ordered_subset(income_amount_cols, y_cols)
-        elif is_income_freq:
-            y_cols = _ordered_subset(income_freq_cols, y_cols)
-
         df_plot = df.set_index(x_col)[y_cols]
-        # Dimensioni dinamiche in base ai punti e alle serie
+
+        # Dimensioni dinamiche
         n_points = len(df_plot)
         n_series = len(y_cols)
         width = min(18, 6 + 0.25 * max(n_points, 8))
-        height = 4.5 + 0.3 * min(n_series, 8)
+        height = 4.8 + 0.32 * min(n_series, 8)
         fig, ax = plt.subplots(figsize=(width, height))
 
-        # Selezione tipo di grafico
         chart_type = chart_type.lower()
         if chart_type == "bar":
             df_plot.plot(kind="bar", ax=ax)
@@ -97,32 +65,27 @@ class ChartGenerator:
         else:  # default: line
             df_plot.plot(ax=ax)
 
-        # Impostazioni grafiche
+        # Titoli
         ax.set_title(title)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
-        ax.grid(True, alpha=0.3)
-        # Gestione legenda: per singola serie non mostrare; per classi reddito semplificare etichette e titolo
+        if subtitle:
+            # Usa spazio sotto al titolo principale
+            plt.suptitle(subtitle, y=0.97, fontsize=9, color="#444")
+        # Legenda smart
         if chart_type != "pie":
-            show_legend = len(y_cols) > 1
-            if show_legend:
-                handles, labels = ax.get_legend_handles_labels()
-                # Se sono classi di reddito, mappa le etichette a valori compatti e aggiungi titolo
-                if (is_income_amount or is_income_freq) and labels:
-                    labels = [income_label_map.get(l, l) for l in labels]
-                    ax.legend(handles, labels, loc="best", title="fascia di reddito")
-                else:
-                    ax.legend(loc="best")
+            if len(y_cols) > 1:
+                ax.legend(loc="best")
             else:
-                # Nessuna legenda per grafici a singola serie (es. classe/valore)
-                pass
-        # Ruota le etichette dell'asse X se affollate o se sono comuni
+                ax.legend().remove()
+
+        # X crowded?
         if n_points > 8 or x_col in ("comune", "provincia", "regione"):
             for label in ax.get_xticklabels():
                 label.set_rotation(45)
                 label.set_ha('right')
 
-        # Se sembra una percentuale, applica formattazione dell'asse Y a step regolari (5%)
+        # Percent formatter
         is_percent = any(str(c).endswith('_pct_pop') for c in y_cols) or ('%' in str(ylabel))
         if is_percent:
             try:
@@ -134,10 +97,9 @@ class ChartGenerator:
             ax.yaxis.set_major_locator(mticker.MultipleLocator(5))
             ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
 
-        # Salva immagine in memoria
         buf = io.BytesIO()
         plt.tight_layout()
-        plt.savefig(buf, format="png")
+        plt.savefig(buf, format="png", dpi=150)
         buf.seek(0)
         plt.close()
         return buf.getvalue()
